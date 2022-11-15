@@ -1,53 +1,129 @@
 import axios from 'axios';
+import { Notify } from 'notiflix/build/notiflix-notify-aio';
+import SimpleLightbox from 'simplelightbox';
+import 'simplelightbox/dist/simple-lightbox.min.css';
+
+const lightbox = new SimpleLightbox('.gallery a', {
+  captionsData: 'alt',
+  captionDelay: 250,
+});
 
 const formRef = document.querySelector('.search-form');
 const gallleryRef = document.querySelector('.gallery');
+const loadMoreBtn = document.querySelector('.load-more');
+const input = document.querySelector('input');
 
 formRef.addEventListener('submit', onFormSearch);
+gallleryRef.addEventListener('click', e => e.preventDefault());
+loadMoreBtn.addEventListener('click', onLoadMoreClick);
 
 const URL = 'https://pixabay.com/api/';
 const API_KEY = '31298446-18dbc6951dc09e2b2b9c5e503';
 
+let page = 1;
+let searchValue;
+let totalRenderHits = 40;
+
 function onFormSearch(e) {
   e.preventDefault();
   let searchValue = e.target.searchQuery.value;
-
-  getFetch(searchValue).then(markupImg);
+  clearMarkup();
+  hideBtn();
+  getFetch(searchValue).then(data => {
+    renderCards(data);
+    lightbox.refresh();
+  });
 }
 
-async function getFetch(searchValue) {
-  const data = await axios.get(
-    `${URL}?key=${API_KEY}&q=${searchValue}&image_type=photo&orientation=horizontal&safesearch=true`
-  );
-  //   const data = await axios.get(
-  //     'https://pixabay.com/api/?key=31298446-18dbc6951dc09e2b2b9c5e503&q=yellow+flowers&image_type=photo'
-  //   );
-  return data.data.hits;
+async function getFetch(searchValue, page) {
+  try {
+    const dataResponse = await axios.get(
+      `${URL}?key=${API_KEY}&q=${searchValue}&image_type=photo&orientation=horizontal&safesearch=true&per_page=40&page=${page}`
+    );
+
+    return dataResponse.data;
+  } catch (error) {
+    Notify.failure(error);
+  }
+}
+
+function onLoadMoreClick() {
+  page += 1;
+  searchValue = input.value;
+
+  getFetch(searchValue, page).then(data => {
+    totalRenderHits += data.hits.length;
+    renderCards(data);
+    lightbox.refresh();
+  });
+}
+
+function renderCards(data) {
+  if (data.hits.length === 0) {
+    Notify.failure(
+      'Sorry, there are no images matching your search query. Please try again.'
+    );
+    return;
+  }
+  if (page === 1) {
+    Notify.success(`Hooray! We found ${data.totalHits} images.`);
+    showBtn();
+  }
+  if (totalRenderHits >= data.totalHits) {
+    hideBtn();
+    Notify.info("We're sorry, but you've reached the end of search results.");
+  }
+  markupImg(data.hits);
 }
 
 function markupImg(array) {
   const markup = array
-    .map(img => {
-      return `
-  <div class="photo-card card-set">
-  <img src=${img.webformatURL} alt=${img.tags} loading="lazy"/>
+    .map(
+      ({
+        largeImageURL,
+        webformatURL,
+        tags,
+        likes,
+        views,
+        comments,
+        downloads,
+      }) => {
+        return `
+      <a class="card-set" href=${largeImageURL} >
+  <div class="photo-card">
+  <img src=${webformatURL} alt=${tags} loading="lazy"/>
   <div class="info">
     <p class="info-item">
-      <b>Likes ${img.likes}</b>
+      <b>Likes</b>${likes}
     </p>
     <p class="info-item">
-      <b>Views ${img.views}</b>
+      <b>Views</b>${views}
     </p>
     <p class="info-item">
-      <b>Comments ${img.comments}</b>
+      <b>Comments</b>${comments}
     </p>
     <p class="info-item">
-      <b>Downloads ${img.downloads}</b>
+      <b>Downloads</b>${downloads}
     </p>
   </div>
 </div>
+</a>
+
 `;
-    })
+      }
+    )
     .join('');
-  gallleryRef.innerHTML = markup;
+  gallleryRef.insertAdjacentHTML('beforeend', markup);
+}
+
+function clearMarkup() {
+  gallleryRef.innerHTML = '';
+  page = 1;
+}
+
+function showBtn() {
+  loadMoreBtn.style.display = 'block';
+}
+function hideBtn() {
+  loadMoreBtn.style.display = 'none';
 }
